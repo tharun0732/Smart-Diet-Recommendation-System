@@ -1,62 +1,85 @@
-import React, { useState, useEffect } from 'react';
-import { GoogleGenAI, Chat, Content } from "@google/genai";
+import React, { useState } from 'react';
+import { Content } from './types';
 import PlannerPage from './components/PlannerPage';
 import TodoListPage from './components/TodoListPage';
 import ChatbotComponent from './components/Chatbot';
 
 type Page = 'home' | 'planner' | 'todolist';
 
-const API_KEY = process.env.API_KEY;
-
-if (!API_KEY) {
-  throw new Error("API_KEY environment variable not set");
-}
-
-const ai = new GoogleGenAI({ apiKey: API_KEY });
-
 const App: React.FC = () => {
   const [page, setPage] = useState<Page>('home');
-  const [chat, setChat] = useState<Chat | null>(null);
   const [messages, setMessages] = useState<Content[]>([]);
   const [userInput, setUserInput] = useState('');
   const [isChatLoading, setIsChatLoading] = useState(false);
   const [isChatOpen, setIsChatOpen] = useState(false);
-  
-  // Initialize chat
-  useEffect(() => {
-    const initChat = () => {
-      const chatSession = ai.chats.create({
-        model: 'gemini-2.5-flash',
-        config: {
-          systemInstruction: 'You are Smart Fitness Chat, a friendly and helpful AI nutrition and wellness assistant. Your goal is to provide clear, safe, and encouraging advice. Structure every response in the following format: 1. A clear, friendly title for the topic. 2. A brief introductory sentence. 3. A list of actionable points using asterisks. Use markdown for bolding to highlight the main idea of each point (e.g., "**Eat a Variety of Foods:** ..."). 4. End with this exact disclaimer: "*Please note: This information is for general wellness guidance and is not medical advice. If you have specific dietary needs or health concerns, it\'s always best to consult with a healthcare professional or a registered dietitian.*"',
-        },
-      });
-      setChat(chatSession);
-    };
-    initChat();
-  }, []);
 
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!userInput.trim() || !chat) return;
+    if (!userInput.trim()) return;
 
-    const userMessage: Content = { role: 'user', parts: [{ text: userInput }] };
-    setMessages(prev => [...prev, userMessage]);
+    const userMessageText = userInput;
+    const userMessage: Content = { role: 'user', parts: [{ text: userMessageText }] };
+    
+    // Add user message to the conversation
+    const newMessages = [...messages, userMessage];
+    setMessages(newMessages);
     setUserInput('');
     setIsChatLoading(true);
 
     try {
-      const responseStream = await chat.sendMessageStream({ message: userInput });
-      let fullResponse = "";
-      for await (const chunk of responseStream) {
-        fullResponse += chunk.text;
+      const response = await fetch('/api/chat', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        // Send the previous messages as history for context
+        body: JSON.stringify({ history: messages, message: userMessageText }),
+      });
+
+      if (!response.ok || !response.body) {
+        throw new Error(`API error: ${response.statusText}`);
       }
-      const modelMessage: Content = { role: 'model', parts: [{ text: fullResponse }] };
-      setMessages(prev => [...prev, modelMessage]);
+
+      // Prepare for streaming response
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let modelResponseText = "";
+      
+      // Add a placeholder for the model's response
+      const modelMessagePlaceholder: Content = { role: 'model', parts: [{ text: '' }]};
+      setMessages(prev => [...prev, modelMessagePlaceholder]);
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        
+        const chunk = decoder.decode(value, { stream: true });
+        modelResponseText += chunk;
+        
+        // Update the last message (the model's response) in the array
+        setMessages(currentMessages => {
+          const updatedMessages = [...currentMessages];
+          if (updatedMessages.length > 0) {
+            updatedMessages[updatedMessages.length - 1] = {
+              role: 'model',
+              parts: [{ text: modelResponseText }],
+            };
+          }
+          return updatedMessages;
+        });
+      }
+
     } catch (error) {
       console.error("Chat error:", error);
       const errorMessage: Content = { role: 'model', parts: [{ text: "Sorry, I'm having trouble connecting right now. Please try again later." }] };
-      setMessages(prev => [...prev, errorMessage]);
+      // Replace the placeholder with an error message
+      setMessages(prev => {
+        const updatedMessages = [...prev];
+        if (updatedMessages.length > 0) {
+            updatedMessages[updatedMessages.length - 1] = errorMessage;
+        }
+        return updatedMessages;
+      });
     } finally {
       setIsChatLoading(false);
     }

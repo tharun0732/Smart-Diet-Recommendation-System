@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import type { Content } from '@google/genai';
+import type { Content } from '../types';
 
 interface ChatbotComponentProps {
   messages: Content[];

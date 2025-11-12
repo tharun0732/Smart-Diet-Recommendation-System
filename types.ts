@@ -18,3 +18,13 @@ export interface DietRecommendation {
   bmi: number;
   bmiCategory: string;
 }
+
+// New types for the chatbot to avoid @google/genai dependency on frontend
+export interface Part {
+  text: string;
+}
+
+export interface Content {
+  role: 'user' | 'model';
+  parts: Part[];
+}
