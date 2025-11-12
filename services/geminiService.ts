@@ -58,7 +58,15 @@ export async function getDietRecommendation(profile: UserProfile): Promise<DietR
       }
     });
 
-    const jsonString = planResponse.text.trim();
+    let jsonString = planResponse.text.trim();
+    
+    // The Gemini API can sometimes wrap the JSON in markdown backticks (\`\`\`json ... \`\`\`).
+    // This code block robustly extracts the JSON content before parsing.
+    const jsonMatch = jsonString.match(/```(json)?\s*([\s\S]*?)\s*```/);
+    if (jsonMatch && jsonMatch[2]) {
+        jsonString = jsonMatch[2];
+    }
+
     const planData: PlanData = JSON.parse(jsonString);
 
     if (!planData || !planData.planTitle || !planData.details) {
