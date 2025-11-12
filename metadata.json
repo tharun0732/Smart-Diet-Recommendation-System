@@ -1,0 +1,5 @@
+{
+  "name": "Smart Diet Recommendation System",
+  "description": "A web application that provides personalized diet recommendations based on user's age, weight, height, and dietary goals using the Gemini API.",
+  "requestFramePermissions": []
+}
